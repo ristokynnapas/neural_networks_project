@@ -22,13 +22,6 @@ import re
 import sys
 import weakref
 
-from pygame import surface
-
-import skvideo.io
-import numpy as np
-
-steer = 0
-
 try:
     import pygame
     from pygame.locals import KMOD_CTRL
@@ -118,7 +111,7 @@ class World(object):
         self._gamma = args.gamma
         self.restart(args)
         self.world.on_tick(hud.on_world_tick)
-        self.recording_enabled = True
+        self.recording_enabled = False
         self.recording_start = 0
 
     def restart(self, args):
@@ -290,14 +283,13 @@ class HUD(object):
             '']
         if isinstance(control, carla.VehicleControl):
             self._info_text += [
-                ('Throttle:', control.throttle, 0.0, 0.8),
+                ('Throttle:', control.throttle, 0.0, 1.0),
                 ('Steer:', control.steer, -1.0, 1.0),
                 ('Brake:', control.brake, 0.0, 1.0),
                 ('Reverse:', control.reverse),
                 ('Hand brake:', control.hand_brake),
                 ('Manual:', control.manual_gear_shift),
                 'Gear:        %s' % {-1: 'R', 0: 'N'}.get(control.gear, control.gear)]
-            
         elif isinstance(control, carla.WalkerControl):
             self._info_text += [
                 ('Speed:', control.speed, 0.0, 5.556),
@@ -561,7 +553,7 @@ class CameraManager(object):
         self.surface = None
         self._parent = parent_actor
         self.hud = hud
-        self.recording = True
+        self.recording = False
         bound_y = 0.5 + self._parent.bounding_box.extent.y
         attachment = carla.AttachmentType
         self._camera_transforms = [
@@ -578,13 +570,13 @@ class CameraManager(object):
         self.transform_index = 1
         self.sensors = [
             ['sensor.lidar.ray_cast', None, 'Lidar (Ray-Cast)'],
+            ['sensor.camera.rgb', cc.Raw, 'Camera RGB'],
             ['sensor.camera.depth', cc.Raw, 'Camera Depth (Raw)'],
             ['sensor.camera.depth', cc.Depth, 'Camera Depth (Gray Scale)'],
             ['sensor.camera.depth', cc.LogarithmicDepth, 'Camera Depth (Logarithmic Gray Scale)'],
             ['sensor.camera.semantic_segmentation', cc.Raw, 'Camera Semantic Segmentation (Raw)'],
             ['sensor.camera.semantic_segmentation', cc.CityScapesPalette,
-             'Camera Semantic Segmentation (CityScapes Palette)'],
-            ['sensor.camera.rgb', cc.Raw, 'Camera RGB']]
+             'Camera Semantic Segmentation (CityScapes Palette)']]
         world = self._parent.get_world()
         bp_library = world.get_blueprint_library()
         for item in self.sensors:
@@ -596,13 +588,6 @@ class CameraManager(object):
                     blp.set_attribute('gamma', str(gamma_correction))
             elif item[0].startswith('sensor.lidar'):
                 blp.set_attribute('range', '50')
-                blp.set_attribute('channels', str(32))
-                blp.set_attribute('points_per_second', str(100000))
-                blp.set_attribute('rotation_frequency', str(10))
-                blp.set_attribute('upper_fov', str(10))
-                blp.set_attribute('lower_fov', str(-30))
-                #lidar.set_position(x=0, y=0, z=1.40)
-                #lidar.set_rotation(pitch=0, yaw=0, roll=0)
             item.append(blp)
         self.index = None
 
@@ -666,8 +651,6 @@ class CameraManager(object):
             lidar_img = np.zeros(lidar_img_size)
             lidar_img[tuple(lidar_data.T)] = (255, 255, 255)
             self.surface = pygame.surfarray.make_surface(lidar_img)
-            print("Lidar image:", lidar_img)
-            # Here a new opencv window?
         else:
             image.convert(self.sensors[self.index][1])
             array = np.frombuffer(image.raw_data, dtype=np.dtype("uint8"))
@@ -677,7 +660,6 @@ class CameraManager(object):
             self.surface = pygame.surfarray.make_surface(array.swapaxes(0, 1))
         if self.recording:
             image.save_to_disk('_out/%08d' % image.frame)
-        #os.system("avconv -r 8 -f image2 -i _out/%08d -y -qscale 0 -s 640x480 -aspect 4:3 result.avi")
 
 # ==============================================================================
 # -- Game Loop ---------------------------------------------------------
@@ -686,18 +668,13 @@ class CameraManager(object):
 
 def game_loop(args):
     """ Main loop for agent"""
-    global steer
 
     pygame.init()
     pygame.font.init()
     world = None
     tot_target_reached = 0
     num_min_waypoints = 21
-    #
-    #
-    #print("Tere")
-    #
-    #
+
     try:
         client = carla.Client(args.host, args.port)
         client.set_timeout(4.0)
@@ -734,23 +711,6 @@ def game_loop(args):
         clock = pygame.time.Clock()
 
         while True:
-            
-            # printing and saving the required data ->
-
-            if steer == 0:
-                steer += 1
-            else:
-                print("Steering angle is:", control.steer)
-            
-            ##################
-
-
-            outputdata = display
-            print(outputdata)
-            #skvideo.io.vwrite("outputvideo.mp4", outputdata)
-            
-            ###################
-        
             clock.tick_busy_loop(60)
             if controller.parse_events():
                 return

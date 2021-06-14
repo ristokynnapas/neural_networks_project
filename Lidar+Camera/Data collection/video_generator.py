@@ -1,3 +1,5 @@
+# This script is for generating video files from image files using opencv3
+
 import glob
 import cv2 as cv
 import collections
